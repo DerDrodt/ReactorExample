@@ -1,23 +1,65 @@
-import io.netty.handler.codec.serialization.ClassResolvers;
-import io.netty.handler.codec.serialization.ObjectDecoder;
-import io.netty.handler.codec.serialization.ObjectEncoder;
-import reactor.netty.DisposableServer;
-import reactor.netty.tcp.TcpServer;
+import java.net.*;
+import java.io.*;
 
 public class ReactorTestServer {
+
+    private ServerSocket serverSocket;
+
+    public void start(int port) {
+        try {
+            serverSocket = new ServerSocket(port);
+            while (true)
+                new ClientHandler(serverSocket.accept()).start();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            stop();
+        }
+    }
+
+    public void stop() {
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static class ClientHandler extends Thread {
+        private Socket clientSocket;
+        private PrintWriter out;
+        private BufferedReader in;
+
+        public ClientHandler(Socket socket) {
+            this.clientSocket = socket;
+        }
+
+        public void run() {
+            try {
+                out = new PrintWriter(clientSocket.getOutputStream(), true);
+                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) {
+                    if (".".equals(inputLine)) {
+                        out.println("bye");
+                        break;
+                    }
+                    out.println(inputLine);
+                }
+
+                in.close();
+                out.close();
+                clientSocket.close();
+            }
+            catch(IOException e) {
+                System.out.println(e.getMessage());
+            }
+        }
+    }
+
     public static void main(String[] args) {
-        DisposableServer server = TcpServer.create()
-                .host("localhost")
-                .port(8080)
-                .doOnConnection(
-                        con -> con
-                                .addHandler(new ObjectEncoder())
-                                .addHandler(new ObjectDecoder(ClassResolvers.softCachingConcurrentResolver(null))))
-                .handle((in, out) -> {
-                    return out.sendObject(new ExampleMsg("My example msg"));
-                })
-                .wiretap(true)
-                .bindNow();
-        server.onDispose().block();
+        ReactorTestServer server = new ReactorTestServer();
+        server.start(8080);
     }
 }
